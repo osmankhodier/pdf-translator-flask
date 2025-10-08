@@ -29,6 +29,9 @@ except Exception as e:
 # 2. وظيفة إنشاء PDF بالعربية (معالجة RTL)
 # ----------------------------------------------------
 def create_arabic_pdf(translated_text, font_name, output_buffer):
+    """
+    ينشئ ملف PDF جديد باستخدام ReportLab ويدعم اتجاه النص من اليمين لليسار (RTL).
+    """
     c = canvas.Canvas(output_buffer, pagesize=A4)
     c.setFont(font_name, 12)
     width, height = A4
@@ -36,14 +39,17 @@ def create_arabic_pdf(translated_text, font_name, output_buffer):
 
     for line in translated_text.split("\n"):
         if line.strip():
+            # معالجة الحروف المتصلة (Reshaping) وقلب الاتجاه (Bidi)
             reshaped_text = arabic_reshaper.reshape(line)
             bidi_text = get_display(reshaped_text)
 
+            # الانتقال لصفحة جديدة عند الحاجة
             if y < 50:
                 c.showPage()
                 c.setFont(font_name, 12)
                 y = height - 50
 
+            # حساب عرض النص لتحديد موضع البداية من اليمين
             text_width = c.stringWidth(bidi_text, font_name, 12)
             x_position = width - 50 - text_width
             
@@ -86,13 +92,28 @@ if uploaded_file is not None:
         st.error(f"خطأ في قراءة الملف: {e}")
         st.stop()
     
-    # 2. الترجمة
+    # 2. الترجمة (معالجة النصوص الطويلة عبر التقسيم)
     with st.spinner('يتم الآن الترجمة...'):
         try:
-            # الترجمة على دفعات لتجنب الأخطاء
-            translated_text = GoogleTranslator(source='en', target='ar').translate(text_content)
+            translated_text = ""
+            CHUNK_SIZE = 4900 # حجم آمن للتقسيم لتجنب قيود API الترجمة
+            
+            # تقسيم النص إلى قطع صغيرة للترجمة الآمنة
+            chunks = [text_content[i:i + CHUNK_SIZE] for i in range(0, len(text_content), CHUNK_SIZE)]
+            
+            for i, chunk in enumerate(chunks):
+                if chunk.strip():
+                    st.info(f"جاري ترجمة الجزء {i+1} من {len(chunks)}...")
+                    # الترجمة قطعة قطعة
+                    translated_chunk = GoogleTranslator(source='en', target='ar').translate(chunk)
+                    translated_text += translated_chunk
+                    
+            if not translated_text.strip():
+                st.error("فشل في الترجمة: النص الناتج فارغ.")
+                st.stop()
+
         except Exception as e:
-            st.error(f"خطأ في الترجمة: {e}")
+            st.error(f"خطأ في الترجمة. قد يكون النص طويلاً جداً أو أن الخدمة غير متاحة مؤقتاً. الخطأ: {e}")
             st.stop()
 
     st.success("✅ تم الانتهاء من الترجمة، جاري إنشاء ملف PDF.")
